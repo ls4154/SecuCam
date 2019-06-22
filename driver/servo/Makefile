@@ -1,4 +1,4 @@
-obj-m := led.o
+obj-m := servo.o
 KDIR := $(HOME)/linux-kernel/linux-rpi
 
 default:
