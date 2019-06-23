@@ -40,10 +40,10 @@ static struct servo_device servo_tilt = {
 static struct kobject *servo_kobj;
 
 static struct kobj_attribute servo_attr_p = 
-__ATTR(servo_pan, 0660, servo_pan_show, servo_pan_store);
+__ATTR(pan, 0660, servo_pan_show, servo_pan_store);
 
 static struct kobj_attribute servo_attr_t = 
-__ATTR(servo_tilt, 0660, servo_tilt_show, servo_tilt_store);
+__ATTR(tilt, 0660, servo_tilt_show, servo_tilt_store);
 
 static struct attribute *servo_attrs[] = {
 	&servo_attr_p.attr,
@@ -86,8 +86,8 @@ static int __init servo_init(void)
 {
 	printk("servo : init\n");
 
-	/* register */
-	servo_kobj = kobject_create_and_add("secucam_servo", kernel_kobj);
+	/* register sysfs */
+	servo_kobj = kobject_create_and_add("secucam_servo", NULL);
 	if (!servo_kobj)
 		goto err;
 	if (sysfs_create_group(servo_kobj, &servo_attr_group)) {
@@ -96,9 +96,9 @@ static int __init servo_init(void)
 	}
 
 	/* init gpio */
-	gpio_request(GPIO_SERVO_PAN, "servo_pan");
+	gpio_request(GPIO_SERVO_PAN, "pan");
 	gpio_direction_output(GPIO_SERVO_PAN, 0);
-	gpio_request(GPIO_SERVO_TILT, "servo_tilt");
+	gpio_request(GPIO_SERVO_TILT, "tilt");
 	gpio_direction_output(GPIO_SERVO_TILT, 0);
 
 	/* set ktime */
