@@ -5,6 +5,7 @@
 #include <linux/sched.h>
 #include <linux/kobject.h>
 #include <linux/sysfs.h>
+#include <linux/spinlock.h>
 
 #define PWM_PERIOD 20000000 /* 20 ms */
 #define MIN_DUTY_CYCLE (1000000 - 300000)
@@ -16,8 +17,10 @@
 struct servo_device {
 	int state;
 	int angle;
+	int enable;
 	int gpio_pin;
 	struct hrtimer htimer;
+	spinlock_t lock;
 	ktime_t kt0, kt1;
 };
 
@@ -30,11 +33,13 @@ static void set_angle(struct servo_device *dev, unsigned int angle);
 static struct servo_device servo_pan = {
 	.state = 0,
 	.angle = 90,
+	.enable = 1,
 	.gpio_pin = GPIO_SERVO_PAN
 };
 static struct servo_device servo_tilt = {
 	.state = 0,
 	.angle = 90,
+	.enable = 1,
 	.gpio_pin = GPIO_SERVO_TILT
 };
 static struct kobject *servo_kobj;
@@ -61,7 +66,8 @@ static enum hrtimer_restart f_timer_pan(struct hrtimer *unused)
 		gpio_set_value(servo_pan.gpio_pin, 0);
 		hrtimer_forward_now(&servo_pan.htimer, servo_pan.kt0);
 	} else {
-		gpio_set_value(servo_pan.gpio_pin, 1);
+		if (servo_pan.enable)
+			gpio_set_value(servo_pan.gpio_pin, 1);
 		hrtimer_forward_now(&servo_pan.htimer, servo_pan.kt1);
 	}
 	servo_pan.state = !servo_pan.state;
@@ -74,7 +80,8 @@ static enum hrtimer_restart f_timer_tilt(struct hrtimer *unused)
 		gpio_set_value(servo_tilt.gpio_pin, 0);
 		hrtimer_forward_now(&servo_tilt.htimer, servo_tilt.kt0);
 	} else {
-		gpio_set_value(servo_tilt.gpio_pin, 1);
+		if (servo_tilt.enable)
+			gpio_set_value(servo_tilt.gpio_pin, 1);
 		hrtimer_forward_now(&servo_tilt.htimer, servo_tilt.kt1);
 	}
 	servo_tilt.state = !servo_tilt.state;
@@ -94,6 +101,10 @@ static int __init servo_init(void)
 		kobject_put(servo_kobj);
 		goto err;
 	}
+
+	/* init lock */
+	spin_lock_init(&servo_pan.lock);
+	spin_lock_init(&servo_tilt.lock);
 
 	/* init gpio */
 	gpio_request(GPIO_SERVO_PAN, "pan");
@@ -137,27 +148,49 @@ static void __exit servo_exit(void)
 
 static ssize_t servo_pan_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%u\n", servo_pan.angle);
+	unsigned int ret;
+	spin_lock(&servo_pan.lock);
+	ret = servo_pan.angle;
+	spin_unlock(&servo_pan.lock);
+	return sprintf(buf, "%u\n", ret);
 }
 
 static ssize_t servo_pan_store(struct kobject *kobj, struct kobj_attribute *attr, char *buf, size_t count)
 {
-	unsigned int val;
-	sscanf(buf, "%u", &val);
-	set_angle(&servo_pan, val);
+	int val;
+	sscanf(buf, "%d", &val);
+	if (val < 0) {
+		servo_pan.enable = 0;
+	} else {
+		servo_pan.enable = 1;
+		spin_lock(&servo_pan.lock);
+		set_angle(&servo_pan, val);
+		spin_unlock(&servo_pan.lock);
+	}
 	return count;
 }
 
 static ssize_t servo_tilt_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%u\n", servo_tilt.angle);
+	unsigned int ret;
+	spin_lock(&servo_tilt.lock);
+	ret = servo_tilt.angle;
+	spin_unlock(&servo_tilt.lock);
+	return sprintf(buf, "%u\n", ret);
 }
 
 static ssize_t servo_tilt_store(struct kobject *kobj, struct kobj_attribute *attr, char *buf, size_t count)
 {
-	unsigned int val;
-	sscanf(buf, "%u", &val);
-	set_angle(&servo_tilt, val);
+	int val;
+	sscanf(buf, "%d", &val);
+	if (val < 0) {
+		servo_tilt.enable = 0;
+	} else {
+		servo_tilt.enable = 1;
+		spin_lock(&servo_tilt.lock);
+		set_angle(&servo_tilt, val);
+		spin_unlock(&servo_tilt.lock);
+	}
 	return count;
 }
 
