@@ -47,6 +47,7 @@ static irqreturn_t led_irq_top(int irq, void *unuse)
 }
 static irqreturn_t led_irq_bottom(int irq, void *unuse)
 {
+	sysfs_notify(kobj, NULL, "sensor");
 	msleep(5000);
 	printk("irq bottom\n");
 	led_on = !led_on;
